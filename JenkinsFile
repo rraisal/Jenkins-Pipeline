@@ -1,0 +1,84 @@
+pipeline {
+  agent any
+  tools {
+      maven 'maven3.5.0'
+  }
+  stages {
+
+  stage('Build Dependencies') {
+  steps {
+    cleanWs()
+    slackSend (color: '#FFFF00', message: "STARTED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+    checkout([$class: 'GitSCM', branches: [[name: '*/$XXX']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'XXXXXXXXXX', url: 'XXXXXXXX']]])
+    sh 'mvn clean deploy -U'
+    cleanWs()
+    checkout([$class: 'GitSCM', branches: [[name: '*/$COMMON_BRANCH']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'XXXXXX', url: 'XXXXXX']]])
+    sh 'mvn clean deploy -U'
+    }
+  }
+    stage('Fetch-XXXXXX-Project') {
+      steps {
+        cleanWs()
+        dir('XXXXXX-integration') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/$XXXXXX']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'XXXXXX', url: 'XXXXXX/XXXXXX-integration-ms.git']]])
+        }
+        dir('XXXXXX-core') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/$XXXXXX']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'XXXXXX', url: 'XXXXXX/XXXXXX-core-service.git']]])
+        }
+        dir('devops') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/XXXXXX']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'XXXXXX', url: 'XXXXXX/XXXXXX-Devops.git']]])
+
+        }
+      }
+    }
+        stage('Build') {
+      steps {
+
+        dir('XXXXXX-core') {
+        echo '[INFO] --- XXXXXX --- '
+        echo 'Testing'
+        sh ''' echo "$XXXXXX_CORE_CONFIG" > integration-configuration/src/main/filters/distribution.properties '''
+        echo '[INFO] --- Production Profile Updated for core service --- '
+        sh 'mvn clean deploy -U'
+        sh 'mkdir $WORKSPACE/devops/target'
+        sh 'mkdir $WORKSPACE/devops/target/core'
+        sh 'mkdir $WORKSPACE/devops/target/integration'
+        sh 'mkdir $WORKSPACE/devops/target/db'
+        sh 'mkdir $WORKSPACE/devops/target/web'
+        sh 'mv $WORKSPACE/XXXXXX-core/integration-distribution/target/XXXXXX-integration-ui-service-distribution.zip $WORKSPACE/devops/target/core'
+        sh 'mv $WORKSPACE/XXXXXX-core/integration-sql/target/XXXXXX-sql/distribution $WORKSPACE/devops/target/db'
+        sh 'mv $WORKSPACE/XXXXXX-core/integration-ui/target/XXXXXX-ui-web.zip $WORKSPACE/devops/target/web'
+        }
+
+        dir('XXXXXX-integration') {
+
+        sh ''' echo "$XXXXXX_INTG_CONFIG" > integration-ms-configuration/src/main/filters/production.properties '''
+        echo '[INFO] --- Production Profile Updated for integration-service --- '
+        sh 'mvn clean deploy -U'
+        sh 'mv $WORKSPACE/XXXXXX-integration/integration-ms-dist/target/integration-ms-distribution.zip $WORKSPACE/devops/target/integration'
+        }
+
+        dir('devops') {
+
+        sh './XXXXXX_pre_setup.sh'
+        }
+      }
+    }
+    stage('Deploy'){
+    steps{
+        dir('devops'){
+        sh 'cd ansible && ./ECSDeploy.sh'
+        echo '[SUCCESS] --- Project has been deployed ---'
+        }
+    }
+    }
+    }
+    post {
+success {
+slackSend (color: '#00FF00', message: "SUCCESSFUL: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+}
+failure {
+slackSend (color: '#FF0000', message: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+}
+}
+    }
